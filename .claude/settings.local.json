@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(python --version)",
+      "PowerShell(python -m venv .venv)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\pip.exe install -q -r requirements.txt)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests\\\\test_engine.py tests\\\\test_scenarios.py tests\\\\test_sensitivity.py -v)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests\\\\test_engine.py tests\\\\test_scenarios.py tests\\\\test_sensitivity.py -q)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests\\\\test_providers_bcb.py tests\\\\test_providers_brapi.py -q)",
+      "PowerShell(\\(Get-Content -Raw c:\\\\Users\\\\mailson.oliveira\\\\Documents\\\\Projeto_financeiro\\\\data\\\\providers\\\\brapi.py\\) -replace 'datetime\\\\.utcnow\\\\\\(\\\\\\)', 'datetime.now\\(timezone.utc\\)' | Set-Content -Encoding utf8 c:\\\\Users\\\\mailson.oliveira\\\\Documents\\\\Projeto_financeiro\\\\data\\\\providers\\\\brapi.py)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests\\\\ -q)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests\\\\test_db_models.py -v)",
+      "PowerShell(.\\\\.venv\\\\Scripts\\\\python.exe -m py_compile app\\\\Home.py app\\\\pages\\\\1_Clientes.py app\\\\pages\\\\2_Watchlist.py app\\\\pages\\\\3_Valuation.py app\\\\pages\\\\4_Cenarios_e_Sensibilidade.py app\\\\pages\\\\5_Explicacao.py app\\\\components\\\\formatting.py app\\\\components\\\\inputs.py)"
+    ]
+  }
+}
