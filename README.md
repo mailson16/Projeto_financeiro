@@ -56,8 +56,7 @@ buscada na API do Banco Central e não precisa de token.
 
 O motor (`valuation/constants.py` e `valuation/engine.py`) desconta o
 Valor Terminal usando o mesmo número de anos da projeção (N), seguindo a
-convenção financeira padrão — não a convenção observada na ferramenta de
-referência "Ward" (que usa um número fracionário de períodos). Por isso,
+convenção financeira padrão. Por isso,
 o preço justo final calculado para BRBI11/TAEE4 é diferente dos números
 publicados na seção 19 do doc; ver a nota no topo de `tests/test_engine.py`
 para os detalhes de como isso foi verificado.
