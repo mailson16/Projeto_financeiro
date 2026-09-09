@@ -11,13 +11,14 @@ import json
 from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
 import db.repository as repo
 import services.market_data_service as market_data_service
 from db.models import Cliente, Empresa
+from db.models import ResultadoFinanceiro
 from db.models import Valuation as ValuationModel
 from valuation.constants import GROWTH_MODE_AUTOMATIC, GROWTH_MODE_MANUAL, MODEL_VERSION
 from valuation.engine import (
@@ -33,29 +34,45 @@ MARGEM_SEGURANCA_PADRAO = Decimal("0.20")
 TAXA_CRESCIMENTO_PADRAO_SE_SEM_HISTORICO = Decimal("0.04")
 
 
-def _crescimento_medio_historico(session: Session, empresa: Empresa) -> Optional[Decimal]:
+def _resultados_anos_completos(session: Session, empresa: Empresa) -> List[ResultadoFinanceiro]:
+    """Historico anual, excluindo o ano corrente.
+
+    O ultimo item retornado pela fonte de dados para o ano corrente costuma
+    ser um Lucro Liquido parcial (YTD, ver docstring de
+    data/providers/statusinvest.py) - nao um ano fiscal fechado. Usa-lo como
+    se fosse um ano completo distorce tanto a taxa de crescimento media
+    quanto o LL do ano-base (que ficaria artificialmente baixo). Por isso o
+    ano corrente e sempre excluido do calculo de premissas sugeridas; o
+    ano-base e projetado a partir do ultimo ano fechado (secao 7 do doc).
+    """
     resultados = repo.listar_resultados_financeiros(session, empresa)
-    crescimentos = [r.crescimento for r in resultados if r.crescimento is not None]
+    ano_atual = date.today().year
+    return [r for r in resultados if r.ano < ano_atual]
+
+
+def _crescimento_medio_historico(resultados_completos: List[ResultadoFinanceiro]) -> Optional[Decimal]:
+    crescimentos = [r.crescimento for r in resultados_completos if r.crescimento is not None]
     if not crescimentos:
         return None
     return sum(crescimentos, Decimal("0")) / len(crescimentos)
 
 
 def _crescimento_automatico(
-    session: Session, empresa: Empresa
+    session: Session, empresa: Empresa, resultados_completos: List[ResultadoFinanceiro]
 ) -> tuple[Decimal, Optional[Decimal], Optional[Decimal]]:
     """Crescimento sugerido quando growth_mode=automatic (secao 9 do SKILL.md).
 
     Prioridade: g = ROE x (1-Payout) quando ambos disponiveis no indicador
     mais recente (retorna o roe/payout usados, para rastreabilidade); senao,
-    media historica do LL; senao, um piso conservador (nesses dois ultimos
-    casos, roe/payout retornam None - o crescimento nao veio dessa formula).
+    media historica do LL (apenas anos fechados); senao, um piso
+    conservador (nesses dois ultimos casos, roe/payout retornam None - o
+    crescimento nao veio dessa formula).
     """
     indicador = repo.obter_indicador_mais_recente(session, empresa)
     if indicador is not None and indicador.roe is not None and indicador.payout is not None:
         g = calcular_crescimento_sustentavel(indicador.roe, indicador.payout)
         return g, indicador.roe, indicador.payout
-    g = _crescimento_medio_historico(session, empresa) or TAXA_CRESCIMENTO_PADRAO_SE_SEM_HISTORICO
+    g = _crescimento_medio_historico(resultados_completos) or TAXA_CRESCIMENTO_PADRAO_SE_SEM_HISTORICO
     return g, None, None
 
 
@@ -71,13 +88,12 @@ def montar_premissas_sugeridas(
     valor manual anterior e sugerido de novo, mas o valor automatico atual
     tambem e exposto para a UI mostrar a divergencia.
     """
-    resultados = repo.listar_resultados_financeiros(session, empresa)
-    if not resultados:
+    resultados_completos = _resultados_anos_completos(session, empresa)
+    if not resultados_completos:
         raise ValueError(
-            f"Nao ha historico de Lucro Liquido salvo para {empresa.ticker}. "
+            f"Nao ha historico de Lucro Liquido (ano fechado) salvo para {empresa.ticker}. "
             "Rode market_data_service.atualizar_dados_ativo antes de sugerir premissas."
         )
-    ll_ano_base_fonte = resultados[-1].lucro_liquido  # ano mais recente disponivel
 
     taxa_desconto_automatica = market_data_service.obter_selic_para_taxa_desconto()
 
@@ -103,24 +119,33 @@ def montar_premissas_sugeridas(
         )
     taxa_desconto_original_automatico = taxa_desconto_automatica
 
-    # --- Crescimento (auto = ROE x (1-Payout) ou media historica) ---
+    # --- Crescimento (auto = ROE x (1-Payout) ou media historica de anos fechados) ---
+    taxa_crescimento_automatica, roe_automatico, payout_automatico = _crescimento_automatico(
+        session, empresa, resultados_completos
+    )
     if ultimo_valuation is not None and ultimo_valuation.growth_mode == GROWTH_MODE_MANUAL:
         taxa_crescimento = ultimo_valuation.taxa_crescimento
         roe = ultimo_valuation.roe
         payout = ultimo_valuation.payout
         growth_mode = GROWTH_MODE_MANUAL
     else:
-        taxa_crescimento, roe, payout = _crescimento_automatico(session, empresa)
+        taxa_crescimento, roe, payout = taxa_crescimento_automatica, roe_automatico, payout_automatico
         growth_mode = GROWTH_MODE_AUTOMATIC
 
-    # --- Lucro base (auto = ultimo resultado financeiro salvo) ---
+    # --- Lucro base (auto = projecao do ultimo ano fechado pela taxa de
+    # crescimento automatica, secao 7: "LL futuro = LL anterior x (1 + g)".
+    # O ultimo ano retornado pela fonte de dados costuma ser um LL parcial
+    # (YTD) - por isso `_resultados_anos_completos` ja o exclui, e o
+    # ano-base e sempre projetado a partir do ultimo ano fiscal fechado,
+    # nunca do valor bruto de um ano em andamento.) ---
+    ll_ultimo_ano_fechado = resultados_completos[-1].lucro_liquido
+    ll_ano_base_fonte = ll_ultimo_ano_fechado * (Decimal("1") + taxa_crescimento_automatica)
     if ultimo_valuation is not None and ultimo_valuation.ll_ano_base_manual_override:
         ll_ano_base = ultimo_valuation.ll_ano_base
         ll_ano_base_manual_override = True
     else:
         ll_ano_base = ll_ano_base_fonte
         ll_ano_base_manual_override = False
-    ll_ano_base_original_fonte = ll_ano_base_fonte
 
     return PremissasValuation(
         ll_ano_base=ll_ano_base,
@@ -135,7 +160,7 @@ def montar_premissas_sugeridas(
         taxa_desconto_manual_override=taxa_desconto_manual_override,
         taxa_desconto_original_automatico=taxa_desconto_original_automatico,
         ll_ano_base_manual_override=ll_ano_base_manual_override,
-        ll_ano_base_original_fonte=ll_ano_base_original_fonte,
+        ll_ano_base_original_fonte=ll_ano_base_fonte,
         roe=roe,
         payout=payout,
     )

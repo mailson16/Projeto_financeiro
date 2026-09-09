@@ -89,22 +89,28 @@ def test_obter_cotacao_sucesso(requests_mock):
 
     resultado = ClienteStatusInvest().obter_cotacao(TICKER)
 
+    # numero_acoes vem de market_cap / preco, nao do card "Nº total de
+    # papeis": esse card soma ON+PN (todas as classes emitidas), que para
+    # tickers em units (ex.: BRBI11) fica inflado em relacao ao numero de
+    # acoes que o mercado de fato usa para precificar.
+    esperado = Decimal("1305096601") / Decimal("12.43")
     assert resultado.valor.preco == Decimal("12.43")
-    assert resultado.valor.numero_acoes == Decimal("314987112")
+    assert resultado.valor.numero_acoes == esperado
     assert resultado.valor.market_cap == Decimal("1305096601")
     assert resultado.fonte == "statusinvest.com.br"
 
 
-def test_obter_cotacao_sem_numero_papeis_estima_via_market_cap(requests_mock):
+def test_obter_cotacao_sem_market_cap_usa_total_de_papeis(requests_mock):
     html = HTML_PAGINA_COMPLETA.replace(
-        '<span class="d-inline-block mr-2">N&ordm; total de pap&eacute;is</span>', "<span>outra coisa</span>"
+        '<strong class="value">1.305.096.601</strong>', "<strong class=\"value\">-</strong>"
     )
     requests_mock.get(URL_PAGINA, text=html)
 
     resultado = ClienteStatusInvest().obter_cotacao(TICKER)
 
-    esperado = Decimal("1305096601") / Decimal("12.43")
-    assert resultado.valor.numero_acoes == esperado
+    assert resultado.valor.numero_acoes == Decimal("314987112")
+    # market_cap e recalculado a partir de preco * numero_acoes (fallback).
+    assert resultado.valor.market_cap == Decimal("12.43") * Decimal("314987112")
 
 
 def test_obter_cotacao_sem_preco_levanta_dados_incompletos(requests_mock):

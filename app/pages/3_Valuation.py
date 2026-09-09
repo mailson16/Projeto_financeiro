@@ -72,6 +72,11 @@ with get_session() as session:
         st.error(str(exc))
         st.stop()
 
+    if cotacao is not None:
+        col_preco_fonte, col_num_acoes = st.columns(2)
+        col_preco_fonte.metric("Preço atual (fonte)", fmt_brl(cotacao.preco))
+        col_num_acoes.metric("Número de ações", fmt_numero(cotacao.numero_acoes))
+
     st.subheader("Premissas")
     premissas_editadas = render_premissas_form(premissas_sugeridas, key_prefix=f"val_{empresa.id}")
 
