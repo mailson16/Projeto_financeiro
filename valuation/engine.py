@@ -18,13 +18,31 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional
 
+from valuation.constants import GROWTH_MODE_MANUAL
+
 UM = Decimal("1")
 ZERO = Decimal("0")
 
 
 @dataclass(frozen=True)
 class PremissasValuation:
-    """Premissas editaveis de um valuation (secao 4 do doc)."""
+    """Premissas editaveis de um valuation (secao 4 do doc).
+
+    Campos de rastreabilidade (secoes 8, 10, 12, 52 do SKILL.md):
+    - `growth_mode`: "automatic" (ROE/Payout vem da ultima fonte de dados
+      salva, ou media historica quando indisponiveis) ou "manual" (usuario
+      informa ROE e Payout diretamente - tem prioridade sobre a sugestao
+      automatica). Em ambos os modos, `taxa_crescimento` e DERIVADA de
+      `roe`/`payout` quando esses dois estao disponiveis
+      (g = ROE x (1-Payout), secao 9) - nunca digitada diretamente, para
+      que o numero final continue rastreavel ("de onde veio esse numero?").
+    - `*_manual_override`: True quando o usuario alterou manualmente um
+      valor que o sistema preenche automaticamente (Selic para taxa de
+      desconto, fonte de dados para o lucro base).
+    - `*_original_automatico`/`*_original_fonte`: guarda o valor que o
+      sistema teria sugerido automaticamente, para que a UI possa mostrar
+      "Selic atual: X% | voce esta usando: Y%" mesmo quando ha override.
+    """
 
     ll_ano_base: Decimal
     taxa_crescimento: Decimal
@@ -36,6 +54,16 @@ class PremissasValuation:
     margem_seguranca: Decimal = ZERO
     # None => usa a convencao padrao (N = anos_projecao). Ver constants.py.
     periodos_desconto_perpetuidade: Optional[Decimal] = None
+    growth_mode: str = GROWTH_MODE_MANUAL
+    taxa_desconto_manual_override: bool = False
+    taxa_desconto_original_automatico: Optional[Decimal] = None
+    ll_ano_base_manual_override: bool = False
+    ll_ano_base_original_fonte: Optional[Decimal] = None
+    # ROE/Payout que originaram `taxa_crescimento` quando veio da formula
+    # g = ROE x (1-Payout) (automatica ou manual) - None quando o
+    # crescimento veio de outra fonte (ex.: media historica).
+    roe: Optional[Decimal] = None
+    payout: Optional[Decimal] = None
 
     def __post_init__(self) -> None:
         if self.anos_projecao < 1:
@@ -85,6 +113,12 @@ def projetar_lucro_liquido(ll_ano_base: Decimal, taxa_crescimento: Decimal, anos
     for _ in range(anos - 1):
         projecoes.append(projecoes[-1] * fator)
     return tuple(projecoes)
+
+
+def calcular_crescimento_sustentavel(roe: Decimal, payout: Decimal) -> Decimal:
+    """g = ROE x (1 - Payout) - crescimento sustentavel automatico (secao 9)."""
+    retencao = UM - payout
+    return roe * retencao
 
 
 def calcular_vpl(fluxo: Decimal, taxa_desconto: Decimal, periodo: Decimal) -> Decimal:

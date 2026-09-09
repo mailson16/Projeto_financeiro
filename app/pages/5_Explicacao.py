@@ -46,11 +46,19 @@ with get_session() as session:
     ticker_selecionado = st.selectbox("Ativo", [e.ticker for e in watchlist])
     empresa = next(e for e in watchlist if e.ticker == ticker_selecionado)
 
-    try:
-        premissas = valuation_service.montar_premissas_sugeridas(session, empresa)
-    except ValueError as exc:
-        st.error(str(exc))
+    valuation_salvo = repo.obter_valuation_mais_recente(session, empresa, cliente)
+    if valuation_salvo is None:
+        st.warning(
+            f"Nenhum valuation salvo para {empresa.ticker} com este cliente. "
+            "Rode e salve um na página **Valuation** antes de ver a explicação."
+        )
         st.stop()
+
+    premissas = valuation_service.premissas_do_valuation_salvo(valuation_salvo)
+    st.caption(
+        f"📌 Baseado no valuation salvo em {valuation_salvo.data_calculo.strftime('%d/%m/%Y %H:%M')} "
+        f"(cenário: {valuation_salvo.cenario})."
+    )
 
     resultado = rodar_valuation(premissas)
     dados_historicos = repo.listar_resultados_financeiros(session, empresa)

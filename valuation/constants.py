@@ -25,6 +25,17 @@ from decimal import Decimal
 # descontar o Valor Terminal a valor presente.
 CONVENCAO_PADRAO_PERIODOS_DESCONTO_PERPETUIDADE = "N"
 
-CONTEXTO_UNDECIMAL = 40  # casas de precisao para operacoes Decimal intermediarias
-
 ZERO = Decimal("0")
+
+# Versao do modelo/formula de calculo (secao 51 do SKILL.md: "auditoria").
+# Incrementar sempre que uma formula do motor mudar, para que valuations
+# antigos salvos com uma versao anterior continuem identificaveis.
+MODEL_VERSION = "1.0.0"
+
+# Valores possiveis de `PremissasValuation.growth_mode` (secao 10 do
+# SKILL.md). "automatic": crescimento vem de g = ROE x (1 - Payout) ou de
+# outra fonte automatica (ex.: media historica) quando ROE/Payout nao
+# estao disponiveis. "manual": usuario digitou o valor - tem prioridade
+# sobre qualquer sugestao automatica.
+GROWTH_MODE_AUTOMATIC = "automatic"
+GROWTH_MODE_MANUAL = "manual"

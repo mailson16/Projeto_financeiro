@@ -17,6 +17,7 @@ import services.client_service as client_service
 import services.market_data_service as market_data_service
 from app.components.formatting import fmt_brl, fmt_brl_abreviado, fmt_numero, fmt_pct
 from db.session import criar_tabelas, get_session
+from valuation.engine import calcular_upside
 
 st.set_page_config(page_title="Watchlist - Nosso Valuation", page_icon="⭐", layout="wide")
 criar_tabelas()
@@ -61,19 +62,28 @@ with get_session() as session:
     else:
         for empresa in watchlist:
             cotacao = repo.obter_cotacao_mais_recente(session, empresa)
+            indicador = repo.obter_indicador_mais_recente(session, empresa)
             valuation = repo.obter_valuation_mais_recente(session, empresa, cliente)
 
             preco_atual = cotacao.preco if cotacao else None
             preco_justo = valuation.preco_justo if valuation else None
             upside = None
             if preco_justo is not None and preco_atual is not None and preco_atual > 0:
-                upside = (preco_justo / preco_atual) - Decimal("1")
+                upside = calcular_upside(preco_justo, preco_atual)
             rotulo_data = valuation.data_calculo.strftime("%d/%m/%Y %H:%M") if valuation else None
 
             with st.container(border=True):
                 col_ticker, col_preco, col_justo, col_upside, col_acoes = st.columns([3, 1.4, 1.4, 1.4, 1])
                 with col_ticker:
                     st.markdown(f"**{empresa.ticker}**  \n{empresa.nome}")
+                    market_cap = cotacao.market_cap if cotacao else None
+                    roe = indicador.roe if indicador else None
+                    payout = indicador.payout if indicador else None
+                    st.caption(
+                        f"Market Cap: {fmt_brl_abreviado(market_cap) if market_cap is not None else 'não disponível'}"
+                        f" · ROE: {fmt_pct(roe) if roe is not None else 'não disponível'}"
+                        f" · Payout: {fmt_pct(payout) if payout is not None else 'não disponível'}"
+                    )
                 with col_preco:
                     st.metric("Preço atual", fmt_brl(preco_atual) if preco_atual is not None else "-")
                 with col_justo:

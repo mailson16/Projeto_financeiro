@@ -29,14 +29,17 @@ def matriz_sensibilidade(
     for crescimento in taxas_crescimento:
         colunas = {}
         for desconto in taxas_desconto:
-            premissas = replace(
-                base,
-                taxa_crescimento=crescimento,
-                taxa_desconto=desconto,
-                crescimento_perpetuidade=g,
-            )
-            resultado = rodar_valuation(premissas)
-            colunas[desconto] = resultado.preco_justo
+            try:
+                premissas = replace(
+                    base,
+                    taxa_crescimento=crescimento,
+                    taxa_desconto=desconto,
+                    crescimento_perpetuidade=g,
+                )
+                resultado = rodar_valuation(premissas)
+                colunas[desconto] = resultado.preco_justo
+            except ValueError:
+                colunas[desconto] = None
         linhas[crescimento] = colunas
 
     df = pd.DataFrame.from_dict(linhas, orient="index")

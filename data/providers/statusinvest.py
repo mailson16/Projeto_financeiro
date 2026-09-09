@@ -203,7 +203,7 @@ class ClienteStatusInvest(ProvedorFundamentalista):
         registros = []
         for ano_str, item in zip(anos, serie_lucro_liquido):
             lucro_liquido = _decimal_ou_none(item.get("value"))
-            if not lucro_liquido:
+            if lucro_liquido is None:
                 continue
             try:
                 ano = int(ano_str)

@@ -13,6 +13,8 @@ from typing import List, Optional
 from sqlalchemy import ForeignKey, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from valuation.constants import GROWTH_MODE_MANUAL, MODEL_VERSION
+
 
 class Base(DeclarativeBase):
     pass
@@ -130,6 +132,19 @@ class Valuation(Base):
     preco_justo: Mapped[Decimal]
     upside: Mapped[Optional[Decimal]]
     preco_entrada: Mapped[Decimal]
+
+    # Rastreabilidade de premissas automaticas vs manuais (secoes 8, 10, 12,
+    # 52 do SKILL.md) e versao da formula usada (secao 51 - auditoria).
+    model_version: Mapped[str] = mapped_column(default=MODEL_VERSION)
+    growth_mode: Mapped[str] = mapped_column(default=GROWTH_MODE_MANUAL)
+    taxa_desconto_manual_override: Mapped[bool] = mapped_column(default=False)
+    taxa_desconto_original_automatico: Mapped[Optional[Decimal]]
+    ll_ano_base_manual_override: Mapped[bool] = mapped_column(default=False)
+    ll_ano_base_original_fonte: Mapped[Optional[Decimal]]
+    # ROE/Payout que originaram taxa_crescimento via g = ROE x (1-Payout),
+    # automatico ou manual (secao 9) - None quando veio de outra fonte.
+    roe: Mapped[Optional[Decimal]]
+    payout: Mapped[Optional[Decimal]]
 
     payload_json: Mapped[Optional[str]]  # memoria de calculo completa serializada
 

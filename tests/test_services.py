@@ -161,6 +161,190 @@ def test_salvar_valuation_nao_apaga_valuation_de_outra_empresa_ou_outro_cliente(
     assert repo.obter_valuation_mais_recente(session, empresa_a, cliente_y) is not None
 
 
+def test_montar_premissas_sugeridas_growth_mode_automatico_via_roe_payout(session):
+    empresa = market_data_service.atualizar_dados_ativo(session, "BRBI11")
+    from datetime import date as date_cls
+
+    repo.salvar_indicador(
+        session,
+        empresa,
+        date_cls.today(),
+        payout=Decimal("0.70"),
+        roe=Decimal("0.20"),
+        patrimonio_liquido=None,
+        lpa=None,
+        fonte="fake",
+        data_atualizacao=datetime.now(timezone.utc),
+    )
+
+    premissas = valuation_service.montar_premissas_sugeridas(session, empresa)
+
+    assert premissas.growth_mode == "automatic"
+    assert premissas.taxa_crescimento == Decimal("0.06")  # ROE(0.20) x (1-Payout(0.70))
+    assert premissas.roe == Decimal("0.20")
+    assert premissas.payout == Decimal("0.70")
+
+
+def test_montar_premissas_sugeridas_carrega_roe_payout_manuais_do_ultimo_salvo(session):
+    """Modo manual: o usuario informa ROE/Payout (nao a taxa de crescimento
+    pronta) - a proxima sugestao deve reaproveitar esses dois valores, nao
+    so o `taxa_crescimento` ja calculado."""
+    from valuation.engine import calcular_crescimento_sustentavel, rodar_valuation
+
+    empresa = market_data_service.atualizar_dados_ativo(session, "BRBI11")
+    cliente = client_service.criar_cliente(session, "Fulano de Tal")
+
+    premissas_1 = valuation_service.montar_premissas_sugeridas(session, empresa, cliente)
+    roe_manual = Decimal("0.22")
+    payout_manual = Decimal("0.65")
+    premissas_manual = premissas_1.__class__(
+        **{
+            **premissas_1.__dict__,
+            "growth_mode": "manual",
+            "taxa_crescimento": calcular_crescimento_sustentavel(roe_manual, payout_manual),
+            "roe": roe_manual,
+            "payout": payout_manual,
+        }
+    )
+    valuation_service.salvar_valuation(
+        session, empresa, rodar_valuation(premissas_manual), cenario="custom", cliente=cliente
+    )
+
+    premissas_2 = valuation_service.montar_premissas_sugeridas(session, empresa, cliente)
+
+    assert premissas_2.growth_mode == "manual"
+    assert premissas_2.roe == roe_manual
+    assert premissas_2.payout == payout_manual
+    assert premissas_2.taxa_crescimento == calcular_crescimento_sustentavel(roe_manual, payout_manual)
+
+
+def test_premissas_do_valuation_salvo_reconstroi_igual_ao_original(session):
+    """Cenarios/Sensibilidade/Explicacao devem operar sobre o valuation
+    salvo, nao uma sugestao nova - `premissas_do_valuation_salvo` precisa
+    reproduzir exatamente as premissas usadas naquele calculo."""
+    from valuation.engine import rodar_valuation
+
+    empresa = market_data_service.atualizar_dados_ativo(session, "BRBI11")
+    premissas = valuation_service.montar_premissas_sugeridas(session, empresa)
+    premissas_manual = premissas.__class__(
+        **{
+            **premissas.__dict__,
+            "taxa_desconto": Decimal("0.11"),
+            "taxa_desconto_manual_override": True,
+            "roe": Decimal("0.20"),
+            "payout": Decimal("0.70"),
+        }
+    )
+    resultado_original = rodar_valuation(premissas_manual)
+    salvo = valuation_service.salvar_valuation(session, empresa, resultado_original, cenario="custom")
+
+    premissas_reconstruidas = valuation_service.premissas_do_valuation_salvo(salvo)
+    resultado_reconstruido = rodar_valuation(premissas_reconstruidas)
+
+    # Coluna Numeric persiste com precisao finita (10 casas) - compara com tolerancia de centavos.
+    assert abs(resultado_reconstruido.preco_justo - resultado_original.preco_justo) < Decimal("0.01")
+    assert premissas_reconstruidas.roe == Decimal("0.20")
+    assert premissas_reconstruidas.payout == Decimal("0.70")
+    assert premissas_reconstruidas.taxa_desconto_manual_override is True
+
+
+def test_montar_premissas_sugeridas_nao_sobrescreve_taxa_desconto_manual_anterior(session, monkeypatch):
+    """Secao 52 do SKILL.md: uma taxa de desconto alterada manualmente em um
+    valuation salvo nao deve ser substituida silenciosamente pela Selic
+    atualizada na proxima sugestao de premissas para o mesmo (empresa,
+    cliente)."""
+    from valuation.engine import rodar_valuation
+
+    empresa = market_data_service.atualizar_dados_ativo(session, "BRBI11")
+    cliente = client_service.criar_cliente(session, "Fulano de Tal")
+
+    premissas_1 = valuation_service.montar_premissas_sugeridas(session, empresa, cliente)
+    assert premissas_1.taxa_desconto == Decimal("0.14")  # Selic mockada no fixture
+    assert premissas_1.taxa_desconto_manual_override is False
+
+    premissas_manual = premissas_1.__class__(
+        **{**premissas_1.__dict__, "taxa_desconto": Decimal("0.11"), "taxa_desconto_manual_override": True}
+    )
+    valuation_service.salvar_valuation(
+        session, empresa, rodar_valuation(premissas_manual), cenario="custom", cliente=cliente
+    )
+
+    # Selic "sobe" para 0.18 - a sugestao NAO deve adotar esse novo valor
+    # automaticamente, porque o usuario tinha um override manual salvo.
+    monkeypatch.setattr(market_data_service, "obter_selic_para_taxa_desconto", lambda: Decimal("0.18"))
+
+    premissas_2 = valuation_service.montar_premissas_sugeridas(session, empresa, cliente)
+
+    assert premissas_2.taxa_desconto == Decimal("0.11")
+    assert premissas_2.taxa_desconto_manual_override is True
+    assert premissas_2.taxa_desconto_original_automatico == Decimal("0.18")
+
+
+def test_montar_premissas_sugeridas_nao_sobrescreve_ll_base_manual_anterior(session):
+    from valuation.engine import rodar_valuation
+
+    empresa = market_data_service.atualizar_dados_ativo(session, "BRBI11")
+    cliente = client_service.criar_cliente(session, "Fulano de Tal")
+
+    premissas_1 = valuation_service.montar_premissas_sugeridas(session, empresa, cliente)
+    ll_fonte = premissas_1.ll_ano_base
+
+    premissas_manual = premissas_1.__class__(
+        **{
+            **premissas_1.__dict__,
+            "ll_ano_base": Decimal("999999999"),
+            "ll_ano_base_manual_override": True,
+        }
+    )
+    valuation_service.salvar_valuation(
+        session, empresa, rodar_valuation(premissas_manual), cenario="custom", cliente=cliente
+    )
+
+    premissas_2 = valuation_service.montar_premissas_sugeridas(session, empresa, cliente)
+
+    assert premissas_2.ll_ano_base == Decimal("999999999")
+    assert premissas_2.ll_ano_base_manual_override is True
+    assert premissas_2.ll_ano_base_original_fonte == ll_fonte
+
+
+def test_montar_premissas_sugeridas_nao_sobrescreve_growth_mode_manual_anterior(session):
+    from valuation.engine import rodar_valuation
+
+    empresa = market_data_service.atualizar_dados_ativo(session, "BRBI11")
+    cliente = client_service.criar_cliente(session, "Fulano de Tal")
+
+    premissas_1 = valuation_service.montar_premissas_sugeridas(session, empresa, cliente)
+
+    premissas_manual = premissas_1.__class__(
+        **{**premissas_1.__dict__, "taxa_crescimento": Decimal("0.30"), "growth_mode": "manual"}
+    )
+    valuation_service.salvar_valuation(
+        session, empresa, rodar_valuation(premissas_manual), cenario="custom", cliente=cliente
+    )
+
+    premissas_2 = valuation_service.montar_premissas_sugeridas(session, empresa, cliente)
+
+    assert premissas_2.growth_mode == "manual"
+    assert premissas_2.taxa_crescimento == Decimal("0.30")
+
+
+def test_salvar_valuation_persiste_model_version_e_campos_de_override(session):
+    from valuation.constants import MODEL_VERSION
+    from valuation.engine import rodar_valuation
+
+    empresa = market_data_service.atualizar_dados_ativo(session, "BRBI11")
+    premissas = valuation_service.montar_premissas_sugeridas(session, empresa)
+    premissas_manual = premissas.__class__(
+        **{**premissas.__dict__, "taxa_desconto": Decimal("0.11"), "taxa_desconto_manual_override": True}
+    )
+
+    salvo = valuation_service.salvar_valuation(session, empresa, rodar_valuation(premissas_manual), cenario="custom")
+
+    assert salvo.model_version == MODEL_VERSION
+    assert salvo.taxa_desconto_manual_override is True
+    assert salvo.growth_mode == premissas_manual.growth_mode
+
+
 def test_watchlist_cliente_com_ativo_novo_dispara_busca_de_dados(session):
     cliente = client_service.criar_cliente(session, "Fulano de Tal")
     empresa = client_service.adicionar_ativo_watchlist(session, cliente, "brbi11")

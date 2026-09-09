@@ -1,25 +1,27 @@
-"""Testes do motor puro de DCF, validados contra nosso_valuation_aprendizado.md.
+"""Testes do motor puro de DCF, validados contra .claude/skills/SKILL.md.
 
-Nota importante sobre a convencao de desconto da perpetuidade (secao 9 do doc):
-Ao reproduzir manualmente a matematica dos exemplos de BRBI11/TAEE4 (secao 19),
-descobrimos que o "VPL da Perpetuidade" final publicado no doc so bate se o
-Valor Terminal for descontado por um numero FRACIONARIO de periodos (~2.18),
-nao pelos N=3 anos inteiros de projecao. Isso e exatamente a convencao da
-Ward que a secao 9 diz explicitamente que o Nosso Valuation NAO deve copiar
-implicitamente.
+Nota importante sobre a convencao de desconto da perpetuidade (secao 18/36 do
+SKILL.md): ao reproduzir manualmente a matematica historica dos exemplos de
+BRBI11/TAEE4, descobrimos que o "VPL da Perpetuidade" observado na Ward so
+bate se o Valor Terminal for descontado por um numero FRACIONARIO de
+periodos (~2.18-2.5), nao pelos N=3 anos inteiros de projecao. Isso e
+exatamente a convencao da Ward que a secao 18/36 diz explicitamente que o
+Nosso Valuation NAO deve copiar implicitamente.
 
 Por isso, os testes abaixo sao divididos em dois grupos:
-1. Testes que DEVEM bater com o doc: projecao de LL, VPL de cada ano
+1. Testes que DEVEM bater com o SKILL.md: projecao de LL, VPL de cada ano
    projetado e Valor Terminal bruto (essas partes usam formulas padrao,
    sem a influencia da convencao da Ward).
 2. Golden tests do RESULTADO FINAL (VPL da perpetuidade, valor estimado,
    preco justo, upside) usando a convencao padrao adotada pelo sistema
-   (N periodos inteiros) - os valores esperados foram calculados pela
-   propria formula (nao copiados do doc) e DIVERGEM intencionalmente dos
-   numeros finais da secao 19. Um teste de referencia, separado e rotulado,
-   mostra que informar `periodos_desconto_perpetuidade` explicitamente
-   permite reproduzir a ordem de grandeza dos numeros do doc, apenas para
-   registro historico da origem da convencao Ward.
+   (N periodos inteiros). Para TAEE4 esses valores ja batem com os numeros
+   publicados na secao 35 do SKILL.md (que hoje usa a propria convencao
+   padrao). Para BRBI11 nao ha numero final publicado no SKILL.md atual;
+   os valores esperados foram calculados pela propria formula. Um teste de
+   referencia, separado e rotulado, mostra que informar
+   `periodos_desconto_perpetuidade` explicitamente permite reproduzir a
+   ordem de grandeza dos numeros historicos da Ward, apenas para registro
+   historico da origem dessa convencao.
 """
 
 from decimal import Decimal
@@ -27,8 +29,10 @@ from decimal import Decimal
 import pytest
 
 from tests.fixtures import dados_doc as doc
+from valuation.constants import GROWTH_MODE_MANUAL
 from valuation.engine import (
     PremissasValuation,
+    calcular_crescimento_sustentavel,
     calcular_preco_entrada,
     calcular_valor_terminal,
     calcular_vpl,
@@ -227,3 +231,37 @@ def test_numero_acoes_zero_ou_negativo_levanta_erro():
 def test_margem_seguranca_exemplo_secao_13():
     preco_entrada = calcular_preco_entrada(Decimal("20.00"), Decimal("0.20"))
     assert preco_entrada == Decimal("16.00")
+
+
+# --- Crescimento sustentavel automatico g = ROE x (1-Payout) (secao 9) ---
+
+
+def test_calcular_crescimento_sustentavel_exemplo_secao_9():
+    g = calcular_crescimento_sustentavel(roe=Decimal("0.20"), payout=Decimal("0.70"))
+    assert g == Decimal("0.06")
+
+
+def test_calcular_crescimento_sustentavel_payout_zero_retorna_roe_integral():
+    g = calcular_crescimento_sustentavel(roe=Decimal("0.15"), payout=Decimal("0"))
+    assert g == Decimal("0.15")
+
+
+# --- Rastreabilidade de premissas (secoes 8, 10, 12, 52) ---
+
+
+def test_premissas_valuation_tem_valores_padrao_para_campos_de_rastreabilidade():
+    """Instanciar PremissasValuation sem os campos novos nao deve quebrar
+    nenhum chamador existente (motor, testes antigos, services)."""
+    premissas = PremissasValuation(
+        ll_ano_base=Decimal("100"),
+        taxa_crescimento=Decimal("0.05"),
+        taxa_desconto=Decimal("0.14"),
+        crescimento_perpetuidade=Decimal("0.03"),
+        anos_projecao=3,
+        numero_acoes=Decimal("10"),
+    )
+    assert premissas.growth_mode == GROWTH_MODE_MANUAL
+    assert premissas.taxa_desconto_manual_override is False
+    assert premissas.taxa_desconto_original_automatico is None
+    assert premissas.ll_ano_base_manual_override is False
+    assert premissas.ll_ano_base_original_fonte is None

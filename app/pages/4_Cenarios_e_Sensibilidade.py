@@ -12,6 +12,7 @@ from decimal import Decimal
 import plotly.express as px
 import streamlit as st
 
+import db.repository as repo
 import services.client_service as client_service
 import services.valuation_service as valuation_service
 from app.components.formatting import fmt_brl, fmt_pct
@@ -45,11 +46,19 @@ with get_session() as session:
     ticker_selecionado = st.selectbox("Ativo", [e.ticker for e in watchlist])
     empresa = next(e for e in watchlist if e.ticker == ticker_selecionado)
 
-    try:
-        base = valuation_service.montar_premissas_sugeridas(session, empresa)
-    except ValueError as exc:
-        st.error(str(exc))
+    valuation_salvo = repo.obter_valuation_mais_recente(session, empresa, cliente)
+    if valuation_salvo is None:
+        st.warning(
+            f"Nenhum valuation salvo para {empresa.ticker} com este cliente. "
+            "Rode e salve um na página **Valuation** antes de ver cenários e sensibilidade."
+        )
         st.stop()
+
+    base = valuation_service.premissas_do_valuation_salvo(valuation_salvo)
+    st.caption(
+        f"📌 Baseado no valuation salvo em {valuation_salvo.data_calculo.strftime('%d/%m/%Y %H:%M')} "
+        f"(cenário: {valuation_salvo.cenario})."
+    )
 
     st.subheader("Cenários (conservador / base / otimista)")
     resultados_cenarios = rodar_cenarios(base, CENARIOS_PADRAO)

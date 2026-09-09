@@ -11,10 +11,11 @@ from decimal import Decimal
 
 import streamlit as st
 
+import db.repository as repo
 import services.client_service as client_service
 import services.market_data_service as market_data_service
 import services.valuation_service as valuation_service
-from app.components.formatting import fmt_brl, fmt_numero, fmt_pct
+from app.components.formatting import fmt_brl, fmt_brl_abreviado, fmt_numero, fmt_pct
 from app.components.inputs import render_premissas_form
 from db.session import criar_tabelas, get_session
 from valuation.engine import PremissasValuation, rodar_valuation
@@ -53,8 +54,20 @@ with get_session() as session:
             market_data_service.atualizar_dados_ativo(session, empresa.ticker, forcar=True)
         st.rerun()
 
+    cotacao = repo.obter_cotacao_mais_recente(session, empresa)
+    indicador = repo.obter_indicador_mais_recente(session, empresa)
+    market_cap = cotacao.market_cap if cotacao else None
+    roe = indicador.roe if indicador else None
+    payout = indicador.payout if indicador else None
+
+    st.subheader(f"{empresa.nome} ({empresa.ticker})")
+    col_mcap, col_roe, col_payout = st.columns(3)
+    col_mcap.metric("Market Cap", fmt_brl_abreviado(market_cap) if market_cap is not None else "não disponível")
+    col_roe.metric("ROE", fmt_pct(roe) if roe is not None else "não disponível")
+    col_payout.metric("Payout", fmt_pct(payout) if payout is not None else "não disponível")
+
     try:
-        premissas_sugeridas = valuation_service.montar_premissas_sugeridas(session, empresa)
+        premissas_sugeridas = valuation_service.montar_premissas_sugeridas(session, empresa, cliente)
     except ValueError as exc:
         st.error(str(exc))
         st.stop()

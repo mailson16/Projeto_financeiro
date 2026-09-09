@@ -2,7 +2,7 @@
 
 Sistema de acompanhamento de clientes e valuation por DCF ("Modo 2 — Nosso
 Valuation") para ações da B3. Regras de negócio completas em
-`nosso_valuation_aprendizado.md`.
+`.claude/skills/SKILL.md`.
 
 ## Como rodar
 
@@ -17,8 +17,9 @@ copy .env.example .env   # BRAPI_TOKEN e opcional - ver secao "Fontes de dados" 
 ## Fontes de dados fundamentalistas
 
 A busca automática de preço/nº de ações/Lucro Líquido/indicadores tenta,
-nesta ordem (ver `services/market_data_service.py`, seção 18 do doc: não
-depender de uma única fonte):
+nesta ordem (ver `services/market_data_service.py`; seção 27 do
+`.claude/skills/SKILL.md`: nunca assumir que duas fontes usam a mesma
+metodologia):
 
 1. **statusinvest.com.br** (`data/providers/statusinvest.py`) — scraping da
    página pública do ativo + dois endpoints internos do site
@@ -26,8 +27,8 @@ depender de uma única fonte):
    e funciona para qualquer ticker, inclusive os menores (BRBI11, TAEE4,
    ITSA4, TAEE11 etc.). Os campos extraídos e os seletores usados estão
    documentados no topo do arquivo; os valores foram validados ao vivo
-   contra os números de BRBI11 e TAEE4 registrados na seção 6/19 do doc
-   (bateram exatamente).
+   contra os números de BRBI11 e TAEE4 registrados nas seções 34/35 do
+   `.claude/skills/SKILL.md` (bateram exatamente).
 2. **brapi.dev** (`data/providers/brapi.py`) — usado como fallback caso o
    statusinvest falhe ou mude de layout. Testando ao vivo, confirmamos que
    **o acesso anônimo (sem token) só funciona para alguns tickers de grande
@@ -56,15 +57,17 @@ buscada na API do Banco Central e não precisa de token.
 
 O motor (`valuation/constants.py` e `valuation/engine.py`) desconta o
 Valor Terminal usando o mesmo número de anos da projeção (N), seguindo a
-convenção financeira padrão. Por isso,
-o preço justo final calculado para BRBI11/TAEE4 é diferente dos números
-publicados na seção 19 do doc; ver a nota no topo de `tests/test_engine.py`
-para os detalhes de como isso foi verificado.
+convenção financeira padrão (seção 18 do `.claude/skills/SKILL.md`). Para
+TAEE4 esse é exatamente o resultado publicado na seção 35 do SKILL.md
+(preço justo ≈ R$ 15,54); a divergência histórica de ~2,18-2,5 períodos
+observada na ferramenta Ward (seção 36) não é reproduzida por padrão — ver
+a nota no topo de `tests/test_engine.py` para os detalhes de como isso foi
+verificado.
 
 ## Estrutura
 
-Ver `nosso_valuation_aprendizado.md` (seções 16-17) e o plano de
-implementação para o racional completo. Resumo:
+Ver `.claude/skills/SKILL.md` (seção 31 — arquitetura Python) para o
+racional completo. Resumo:
 
 - `valuation/` — motor puro de DCF (sem I/O), testado isoladamente.
 - `data/` — clientes de fontes externas (Selic, statusinvest.com.br, brapi.dev).

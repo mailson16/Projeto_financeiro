@@ -174,6 +174,24 @@ def test_obter_lucro_liquido_historico_sucesso(requests_mock):
     assert registros[0].fonte == "statusinvest.com.br"
 
 
+def test_obter_lucro_liquido_historico_preserva_ano_com_ll_igual_a_zero(requests_mock):
+    """Secao 42 do SKILL.md: zero pode ser um valor financeiro real (ex.: ano
+    de breakeven) e nao deve ser tratado como dado ausente/descartado."""
+    payload = {
+        "chart": {
+            "category": ["2023", "2024"],
+            "series": {"lucroLiquido": [{"value": 0.0}, {"value": 193670000.00}]},
+        }
+    }
+    requests_mock.get(URL_PAYOUT_RESULT, json=payload)
+
+    registros = ClienteStatusInvest().obter_lucro_liquido_historico(TICKER)
+
+    assert len(registros) == 2
+    assert registros[0].valor.ano == 2023
+    assert registros[0].valor.lucro_liquido == Decimal("0")
+
+
 def test_obter_lucro_liquido_historico_vazio_levanta_dados_incompletos(requests_mock):
     requests_mock.get(URL_PAYOUT_RESULT, json={"chart": {"category": [], "series": {"lucroLiquido": []}}})
 

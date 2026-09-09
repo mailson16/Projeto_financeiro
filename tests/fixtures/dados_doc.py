@@ -32,17 +32,18 @@ BRBI11_VPL_ANO_ESPERADO = (
     Decimal("133461911.21"),
 )
 
-# Valor Terminal bruto (antes do desconto a valor presente) (secao 9)
-BRBI11_VALOR_TERMINAL_ESPERADO = Decimal("1851000000")  # ~R$ 1,851 bilhao (doc arredonda)
+# Valor Terminal bruto (antes do desconto a valor presente) (secao 16)
+BRBI11_VALOR_TERMINAL_ESPERADO = Decimal("1851000000")  # ~R$ 1,851 bilhao (arredondado)
 
-# Resultado final publicado no doc (secao 19) - gerado com a convencao da
-# Ward (~2.18 periodos de desconto da perpetuidade). NAO usado como golden
-# test do comportamento padrao do sistema - ver test_engine.py.
+# Resultado historico observado na Ward (~2.18 periodos de desconto da
+# perpetuidade, ver secao 18/36 do SKILL.md). NAO usado como golden test do
+# comportamento padrao do sistema - ver test_engine.py. O SKILL.md atual nao
+# publica um valor final de referencia para BRBI11 na convencao padrao.
 BRBI11_PRECO_JUSTO_DOC = Decimal("17.43")
 BRBI11_UPSIDE_DOC = Decimal("0.4026")
 
 
-# --- TAEE4 (secoes 6, 10, 19) ---
+# --- TAEE4 (secoes 6, 34, 35 do SKILL.md) ---
 
 TAEE4_LL_ANO_BASE = Decimal("1677182560.80")  # LL 2026
 TAEE4_TAXA_CRESCIMENTO = Decimal("0.0616")
@@ -66,7 +67,11 @@ TAEE4_VPL_ANO_ESPERADO = (
 
 TAEE4_VALOR_TERMINAL_ESPERADO = Decimal("17698917189.21")
 
-# Resultado final publicado no doc (secao 19) - idem observacao acima.
+# Resultado historico observado na Ward (secao 36 do SKILL.md) - idem
+# observacao acima. NOTA: o SKILL.md atual (secao 35) publica um resultado
+# final diferente deste, ja na convencao padrao (N=3 periodos inteiros):
+# preco justo ~R$ 15,54 / upside ~21,90% - que e o que os golden tests de
+# `test_engine.py` validam, e nao os valores *_DOC abaixo.
 TAEE4_VPL_PERPETUIDADE_DOC = Decimal("13297458444.18")
 TAEE4_VALOR_ESTIMADO_DOC = Decimal("17414523253.46")
 TAEE4_PRECO_JUSTO_DOC = Decimal("16.85")
