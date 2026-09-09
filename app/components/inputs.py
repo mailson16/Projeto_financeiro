@@ -7,7 +7,7 @@ from typing import Optional
 
 import streamlit as st
 
-from app.components.formatting import fmt_brl_abreviado
+from app.components.formatting import fmt_brl
 from valuation.engine import PremissasValuation
 
 
@@ -25,7 +25,21 @@ def render_premissas_form(premissas: PremissasValuation, key_prefix: str) -> Pre
             format="%.2f",
             key=f"{key_prefix}_ll_ano_base",
         )
-        st.caption(f"≈ {fmt_brl_abreviado(Decimal(str(ll_ano_base)))}")
+        st.caption(fmt_brl(Decimal(str(ll_ano_base))))
+        payout_medio = st.number_input(
+            "Payout medio (%)",
+            value=float(premissas.payout_medio * 100) if premissas.payout_medio is not None else 0.0,
+            step=0.1,
+            format="%.2f",
+            key=f"{key_prefix}_payout_medio",
+        )
+        roe = st.number_input(
+            "ROE (%)",
+            value=float(premissas.roe * 100) if premissas.roe is not None else 0.0,
+            step=0.1,
+            format="%.2f",
+            key=f"{key_prefix}_roe",
+        )
         taxa_crescimento = st.number_input(
             "Taxa de crescimento esperada (%)",
             value=float(premissas.taxa_crescimento * 100),
@@ -87,4 +101,6 @@ def render_premissas_form(premissas: PremissasValuation, key_prefix: str) -> Pre
         numero_acoes=Decimal(str(numero_acoes)),
         preco_atual=Decimal(str(preco_atual)) if preco_atual > 0 else None,
         margem_seguranca=Decimal(str(margem_seguranca)) / Decimal("100"),
+        payout_medio=Decimal(str(payout_medio)) / Decimal("100") if payout_medio > 0 else None,
+        roe=Decimal(str(roe)) / Decimal("100") if roe > 0 else None,
     )

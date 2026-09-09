@@ -11,13 +11,14 @@ import json
 from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
 import db.repository as repo
 import services.market_data_service as market_data_service
 from db.models import Cliente, Empresa
+from db.models import ResultadoFinanceiro
 from db.models import Valuation as ValuationModel
 from valuation.engine import PremissasValuation, ResultadoValuation, rodar_valuation
 
@@ -27,9 +28,24 @@ MARGEM_SEGURANCA_PADRAO = Decimal("0.20")
 TAXA_CRESCIMENTO_PADRAO_SE_SEM_HISTORICO = Decimal("0.04")
 
 
-def _crescimento_medio_historico(session: Session, empresa: Empresa) -> Optional[Decimal]:
+def _resultados_anos_completos(session: Session, empresa: Empresa) -> List[ResultadoFinanceiro]:
+    """Historico anual, excluindo o ano corrente.
+
+    O ultimo item retornado pela fonte de dados para o ano corrente costuma
+    ser um Lucro Liquido parcial (YTD, ver docstring de
+    data/providers/statusinvest.py) - nao um ano fiscal fechado. Usa-lo como
+    se fosse um ano completo distorce tanto a taxa de crescimento media
+    quanto o LL do ano-base (que ficaria artificialmente baixo). Por isso o
+    ano corrente e sempre excluido do calculo de premissas sugeridas; o
+    ano-base e projetado a partir do ultimo ano fechado (secao 7 do doc).
+    """
     resultados = repo.listar_resultados_financeiros(session, empresa)
-    crescimentos = [r.crescimento for r in resultados if r.crescimento is not None]
+    ano_atual = date.today().year
+    return [r for r in resultados if r.ano < ano_atual]
+
+
+def _crescimento_medio_historico(resultados_completos: List[ResultadoFinanceiro]) -> Optional[Decimal]:
+    crescimentos = [r.crescimento for r in resultados_completos if r.crescimento is not None]
     if not crescimentos:
         return None
     return sum(crescimentos, Decimal("0")) / len(crescimentos)
@@ -37,15 +53,19 @@ def _crescimento_medio_historico(session: Session, empresa: Empresa) -> Optional
 
 def montar_premissas_sugeridas(session: Session, empresa: Empresa) -> PremissasValuation:
     """Sugere premissas iniciais a partir dos dados salvos - o usuario pode editar tudo na UI."""
-    resultados = repo.listar_resultados_financeiros(session, empresa)
-    if not resultados:
+    resultados_completos = _resultados_anos_completos(session, empresa)
+    if not resultados_completos:
         raise ValueError(
-            f"Nao ha historico de Lucro Liquido salvo para {empresa.ticker}. "
+            f"Nao ha historico de Lucro Liquido (ano fechado) salvo para {empresa.ticker}. "
             "Rode market_data_service.atualizar_dados_ativo antes de sugerir premissas."
         )
-    ll_ano_base = resultados[-1].lucro_liquido  # ano mais recente disponivel
 
-    taxa_crescimento = _crescimento_medio_historico(session, empresa) or TAXA_CRESCIMENTO_PADRAO_SE_SEM_HISTORICO
+    taxa_crescimento = _crescimento_medio_historico(resultados_completos) or TAXA_CRESCIMENTO_PADRAO_SE_SEM_HISTORICO
+
+    ll_ultimo_ano_fechado = resultados_completos[-1].lucro_liquido
+    # LL do ano-base = projecao do ultimo ano fechado com a taxa de crescimento
+    # (secao 7 do doc: "LL futuro = LL anterior x (1 + taxa de crescimento)").
+    ll_ano_base = ll_ultimo_ano_fechado * (Decimal("1") + taxa_crescimento)
 
     taxa_desconto = market_data_service.obter_selic_para_taxa_desconto()
     if taxa_desconto is None:
@@ -60,6 +80,8 @@ def montar_premissas_sugeridas(session: Session, empresa: Empresa) -> PremissasV
             "Rode market_data_service.atualizar_dados_ativo antes de sugerir premissas."
         )
 
+    indicador = repo.obter_indicador_mais_recente(session, empresa)
+
     return PremissasValuation(
         ll_ano_base=ll_ano_base,
         taxa_crescimento=taxa_crescimento,
@@ -69,6 +91,8 @@ def montar_premissas_sugeridas(session: Session, empresa: Empresa) -> PremissasV
         numero_acoes=cotacao.numero_acoes,
         preco_atual=cotacao.preco,
         margem_seguranca=MARGEM_SEGURANCA_PADRAO,
+        payout_medio=indicador.payout if indicador else None,
+        roe=indicador.roe if indicador else None,
     )
 
 

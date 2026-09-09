@@ -101,7 +101,13 @@ def test_ticket_novo_ate_valuation_salvo_fluxo_completo(session):
     empresa = market_data_service.atualizar_dados_ativo(session, "BRBI11")
 
     premissas = valuation_service.montar_premissas_sugeridas(session, empresa)
-    assert premissas.ll_ano_base == Decimal("175073000")
+    # LL ano-base = ultimo ano fechado (2025) projetado pela taxa de crescimento
+    # media historica (secao 7 do doc) - nao o valor bruto do ultimo ano.
+    resultados = repo.listar_resultados_financeiros(session, empresa)
+    crescimentos = [r.crescimento for r in resultados if r.crescimento is not None]
+    taxa_crescimento_esperada = sum(crescimentos, Decimal("0")) / len(crescimentos)
+    ll_ano_base_esperado = Decimal("175073000") * (Decimal("1") + taxa_crescimento_esperada)
+    assert abs(premissas.ll_ano_base - ll_ano_base_esperado) < Decimal("0.01")
     assert premissas.numero_acoes == Decimal("314987112")
 
     from valuation.engine import rodar_valuation

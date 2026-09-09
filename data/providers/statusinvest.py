@@ -158,13 +158,28 @@ class ClienteStatusInvest(ProvedorFundamentalista):
             raise DadosIncompletosError(f"statusinvest.com.br nao trouxe preco para {ticker}")
 
         market_cap = self._valor_por_href_termo(soup, "v/valor-de-mercado")
-        numero_acoes = self._numero_acoes(soup)
-        if numero_acoes is None and market_cap is not None and preco > 0:
-            # Fallback quando o card "Nº total de papéis" nao esta presente na pagina.
+        if market_cap is not None and preco > 0:
+            # Preferimos derivar numero_acoes de market_cap / preco: o card "Nº
+            # total de papeis" soma ON+PN (todas as classes emitidas), o que
+            # para tickers negociados em units (ex.: BRBI11 = ON+PN combinadas)
+            # infla o numero de acoes em relacao ao que o mercado de fato usa
+            # para precificar (validado ao vivo: BRBI11 mostra 314.987.112
+            # papeis, mas market_cap/preco bate em ~105 milhoes - o valor
+            # coerente com o preco cotado).
             numero_acoes = market_cap / preco
+        else:
+            # Fallback quando o card "Valor de mercado" nao esta presente/mudou
+            # de layout: usamos o total de papeis, mesmo sabendo que pode estar
+            # inflado para tickers com multiplas classes de acoes.
+            numero_acoes = self._numero_acoes(soup)
 
         if numero_acoes is None:
             raise DadosIncompletosError(f"statusinvest.com.br nao trouxe numero de acoes para {ticker}")
+
+        if market_cap is None:
+            # Fallback simetrico: quando o card "Valor de mercado" nao esta
+            # presente/mudou de layout, mas ja temos preco e numero de acoes.
+            market_cap = preco * numero_acoes
 
         cotacao = CotacaoDTO(ticker=ticker, preco=preco, numero_acoes=numero_acoes, market_cap=market_cap)
         return DadoComFonte(valor=cotacao, fonte=self.nome, data_atualizacao=datetime.now(timezone.utc))

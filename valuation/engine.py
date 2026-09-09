@@ -36,6 +36,10 @@ class PremissasValuation:
     margem_seguranca: Decimal = ZERO
     # None => usa a convencao padrao (N = anos_projecao). Ver constants.py.
     periodos_desconto_perpetuidade: Optional[Decimal] = None
+    # Payout medio e ROE (secao 4 do doc): premissas editaveis, apenas
+    # informativas por enquanto - nao entram no calculo do DCF.
+    payout_medio: Optional[Decimal] = None
+    roe: Optional[Decimal] = None
 
     def __post_init__(self) -> None:
         if self.anos_projecao < 1:

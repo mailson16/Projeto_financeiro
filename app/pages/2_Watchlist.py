@@ -74,6 +74,8 @@ with get_session() as session:
                 col_ticker, col_preco, col_justo, col_upside, col_acoes = st.columns([3, 1.4, 1.4, 1.4, 1])
                 with col_ticker:
                     st.markdown(f"**{empresa.ticker}**  \n{empresa.nome}")
+                    if cotacao is not None and cotacao.market_cap is not None:
+                        st.caption(f"Market Cap: {fmt_brl_abreviado(cotacao.market_cap)}")
                 with col_preco:
                     st.metric("Preço atual", fmt_brl(preco_atual) if preco_atual is not None else "-")
                 with col_justo:

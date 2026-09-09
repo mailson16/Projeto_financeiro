@@ -11,10 +11,11 @@ from decimal import Decimal
 
 import streamlit as st
 
+import db.repository as repo
 import services.client_service as client_service
 import services.market_data_service as market_data_service
 import services.valuation_service as valuation_service
-from app.components.formatting import fmt_brl, fmt_numero, fmt_pct
+from app.components.formatting import fmt_brl, fmt_brl_abreviado, fmt_numero, fmt_pct
 from app.components.inputs import render_premissas_form
 from db.session import criar_tabelas, get_session
 from valuation.engine import PremissasValuation, rodar_valuation
@@ -58,6 +59,16 @@ with get_session() as session:
     except ValueError as exc:
         st.error(str(exc))
         st.stop()
+
+    cotacao = repo.obter_cotacao_mais_recente(session, empresa)
+    if cotacao is not None:
+        col_mc1, col_mc2, col_mc3 = st.columns(3)
+        col_mc1.metric("Preço atual (fonte)", fmt_brl(cotacao.preco))
+        col_mc2.metric("Número de ações", fmt_numero(cotacao.numero_acoes))
+        col_mc3.metric(
+            "Market Cap",
+            fmt_brl_abreviado(cotacao.market_cap) if cotacao.market_cap is not None else "-",
+        )
 
     st.subheader("Premissas")
     premissas_editadas = render_premissas_form(premissas_sugeridas, key_prefix=f"val_{empresa.id}")
